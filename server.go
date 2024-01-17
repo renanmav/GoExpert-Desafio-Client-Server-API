@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 type Quote struct {
@@ -26,7 +27,10 @@ type RawQuote struct {
 	Quote Quote `json:"USDBRL"`
 }
 
-const QuoteApiUrl = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+const (
+	QuoteApiUrl          = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	QuoteApiFetchTimeout = 700 * time.Millisecond // 200ms will fail
+)
 
 func main() {
 	fmt.Println("꩜ Initiating quote server...") // fmt or log?
@@ -53,40 +57,38 @@ func QuoteHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write(result)
-
-	//select {
-	//case <-time.After(100 * time.Millisecond):
-	//	fmt.Println("꩜ Request processed successfully")
-	//	w.Write([]byte("🚀 Response successfully processed"))
-	//case <-ctx.Done():
-	//	fmt.Println("꩜ Request canceled by the client")
-	//}
 }
 
-// TODO: add timeout
-func FetchQuote(_ context.Context) (*Quote, error) {
-	fmt.Println("꩜ Fetching quote...")
+func FetchQuote(ctx context.Context) (*Quote, error) {
+	fmt.Println("꩜ FetchQuote - Fetching quote...")
 
-	req, err := http.Get(QuoteApiUrl)
+	// Timeout with ctx vs http client?
+	ctx, cancel := context.WithTimeout(ctx, QuoteApiFetchTimeout)
+	defer cancel()
+	client := http.Client{
+		Timeout: QuoteApiFetchTimeout,
+	}
+
+	req, err := client.Get(QuoteApiUrl)
 	if err != nil {
-		fmt.Println("꩜ Failed to fetch quote")
+		fmt.Println("꩜ FetchQuote - Failed to fetch quote")
 		return nil, err
 	}
 	defer req.Body.Close()
 
 	res, err := io.ReadAll(req.Body)
 	if err != nil {
-		fmt.Println("꩜ Failed to read response")
+		fmt.Println("꩜ FetchQuote - Failed to read response")
 		return nil, err
 	}
 
 	var data RawQuote
 	err = json.Unmarshal(res, &data)
 	if err != nil {
-		fmt.Println("꩜ Failed to parse response")
+		fmt.Println("꩜ FetchQuote - Failed to parse response")
 		return nil, err
 	}
 
-	fmt.Println("꩜ Quote fetched successfully")
+	fmt.Println("꩜ FetchQuote - Quote fetched successfully")
 	return &data.Quote, nil
 }
