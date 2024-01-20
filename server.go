@@ -7,9 +7,17 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"gorm.io/driver/mysql"
+	"gorm.io/gorm"
 )
 
+type Server struct {
+	db *gorm.DB
+}
+
 type Quote struct {
+	gorm.Model
 	Code       string `json:"code"`
 	Codein     string `json:"codein"`
 	Name       string `json:"name"`
@@ -28,73 +36,106 @@ type RawQuote struct {
 }
 
 const (
-	apiUrl          = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
 	apiFetchTimeout = 200 * time.Millisecond
 	dbWriteTimeout  = 10 * time.Millisecond
+	apiUrl          = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	dbDsn           = "root:root@tcp(localhost:3306)/goexpert?charset=utf8mb4&parseTime=True&loc=Local"
+	serverPath      = "/cotacao"
+	serverPort      = ":8080"
 )
+
+func NewServer() *Server {
+	db, err := gorm.Open(mysql.Open(dbDsn), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	db.AutoMigrate(&Quote{})
+	return &Server{db}
+}
 
 func main() {
 	log.Println("꩜ Initiating quote server...") // fmt or log?
-	http.HandleFunc("/cotacao", QuoteHandler)
-	http.ListenAndServe(":8080", nil)
+	s := NewServer()
+
+	http.HandleFunc(serverPath, s.QuoteHandler)
+	http.ListenAndServe(serverPort, nil)
 }
 
-func QuoteHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) QuoteHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	log.Println("꩜ Request started")
 	defer log.Println("꩜ Request finished")
 
-	quote, err := FetchQuote(ctx)
+	quote, err := s.FetchQuote(ctx)
 	if err != nil {
 		panic(err)
 	}
 
-	// TODO: persist on database with timeout of 10ms
-
-	result, err := json.Marshal(quote)
+	err = s.PersistQuote(ctx, quote)
 	if err != nil {
 		panic(err)
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusOK)
-	w.Write(result)
+	w.Write([]byte(quote.Bid))
 }
 
-func FetchQuote(ctx context.Context) (*Quote, error) {
+func (s *Server) FetchQuote(ctx context.Context) (*Quote, error) {
 	log.Println("꩜ FetchQuote - Fetching quote...")
 	startTime := time.Now()
 
-	// Timeout with ctx vs http client?
 	ctx, cancel := context.WithTimeout(ctx, apiFetchTimeout)
 	defer cancel()
-	client := http.Client{
-		Timeout: apiFetchTimeout,
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiUrl, nil)
+	if err != nil {
+		log.Println("꩜ FetchQuote - Failed to create GET request")
+		return nil, err
 	}
 
-	req, err := client.Get(apiUrl)
+	res, err := http.DefaultClient.Do(req)
 	if err != nil {
+		log.Printf("꩜ FetchQuote - Time elapsed: %v\n", time.Since(startTime))
 		log.Println("꩜ FetchQuote - Failed to fetch quote")
 		return nil, err
 	}
-	defer req.Body.Close()
+	defer res.Body.Close()
 
-	res, err := io.ReadAll(req.Body)
+	bodyBytes, err := io.ReadAll(res.Body)
 	if err != nil {
 		log.Println("꩜ FetchQuote - Failed to read response")
 		return nil, err
 	}
 
 	var data RawQuote
-	err = json.Unmarshal(res, &data)
+	err = json.Unmarshal(bodyBytes, &data)
 	if err != nil {
 		log.Println("꩜ FetchQuote - Failed to parse response")
 		return nil, err
 	}
 
-	// TODO: log time elapsed between start and end of request
 	log.Printf("꩜ FetchQuote - Time elapsed: %v\n", time.Since(startTime))
 	log.Println("꩜ FetchQuote - Quote fetched successfully")
 	return &data.Quote, nil
+}
+
+func (s *Server) PersistQuote(ctx context.Context, quote *Quote) error {
+	log.Println("꩜ PersistQuote - Persisting quote...")
+	startTime := time.Now()
+
+	ctx, cancel := context.WithTimeout(ctx, dbWriteTimeout)
+	defer cancel()
+
+	err := s.db.WithContext(ctx).Create(&quote).Error
+	if err != nil {
+		log.Printf("꩜ PersistQuote - Time elapsed: %v\n", time.Since(startTime))
+		log.Println("꩜ PersistQuote - Failed to persist quote")
+		return err
+	}
+
+	log.Printf("꩜ PersistQuote - Time elapsed: %v\n", time.Since(startTime))
+	log.Println("꩜ PersistQuote - Quote persisted successfully")
+	return nil
 }

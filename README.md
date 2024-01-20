@@ -29,6 +29,11 @@ banco de dados e manipulação de arquivos com Go.
 
 ### Execução
 
+Com o deamon do Docker aberto, abra um terminal e execute o seguinte comando:
+```bash
+docker-compose up -d
+```
+
 Inicie o servidor:
 ```bash
 go run server.go
@@ -38,6 +43,22 @@ Em outro terminal, execute o cliente:
 ```bash
 go run client.go
 ```
+
+Verifique o arquivo `cotacao.txt` e o registro no banco de dados:
+
+```bash
+docker exec -it mysql bash
+mysql -u root -p goexpert
+```
+
+Digite a senha `root` para o usuário `goexpert`. Em seguida, execute o SQL:
+
+```sql
+SHOW TABLES;
+DESCRIBE quotes;
+SELECT * FROM quotes;
+```
+
 
 ### Resultado
 
