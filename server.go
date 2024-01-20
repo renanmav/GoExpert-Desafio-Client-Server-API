@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 )
@@ -28,12 +28,13 @@ type RawQuote struct {
 }
 
 const (
-	QuoteApiUrl          = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
-	QuoteApiFetchTimeout = 700 * time.Millisecond // 200ms will fail
+	apiUrl          = "https://economia.awesomeapi.com.br/json/last/USD-BRL"
+	apiFetchTimeout = 200 * time.Millisecond
+	dbWriteTimeout  = 10 * time.Millisecond
 )
 
 func main() {
-	fmt.Println("꩜ Initiating quote server...") // fmt or log?
+	log.Println("꩜ Initiating quote server...") // fmt or log?
 	http.HandleFunc("/cotacao", QuoteHandler)
 	http.ListenAndServe(":8080", nil)
 }
@@ -41,8 +42,8 @@ func main() {
 func QuoteHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	fmt.Println("꩜ Request started")
-	defer fmt.Println("꩜ Request finished")
+	log.Println("꩜ Request started")
+	defer log.Println("꩜ Request finished")
 
 	quote, err := FetchQuote(ctx)
 	if err != nil {
@@ -62,36 +63,38 @@ func QuoteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func FetchQuote(ctx context.Context) (*Quote, error) {
-	fmt.Println("꩜ FetchQuote - Fetching quote...")
+	log.Println("꩜ FetchQuote - Fetching quote...")
+	startTime := time.Now()
 
 	// Timeout with ctx vs http client?
-	ctx, cancel := context.WithTimeout(ctx, QuoteApiFetchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, apiFetchTimeout)
 	defer cancel()
 	client := http.Client{
-		Timeout: QuoteApiFetchTimeout,
+		Timeout: apiFetchTimeout,
 	}
 
-	req, err := client.Get(QuoteApiUrl)
+	req, err := client.Get(apiUrl)
 	if err != nil {
-		fmt.Println("꩜ FetchQuote - Failed to fetch quote")
+		log.Println("꩜ FetchQuote - Failed to fetch quote")
 		return nil, err
 	}
 	defer req.Body.Close()
 
 	res, err := io.ReadAll(req.Body)
 	if err != nil {
-		fmt.Println("꩜ FetchQuote - Failed to read response")
+		log.Println("꩜ FetchQuote - Failed to read response")
 		return nil, err
 	}
 
 	var data RawQuote
 	err = json.Unmarshal(res, &data)
 	if err != nil {
-		fmt.Println("꩜ FetchQuote - Failed to parse response")
+		log.Println("꩜ FetchQuote - Failed to parse response")
 		return nil, err
 	}
 
 	// TODO: log time elapsed between start and end of request
-	fmt.Println("꩜ FetchQuote - Quote fetched successfully")
+	log.Printf("꩜ FetchQuote - Time elapsed: %v\n", time.Since(startTime))
+	log.Println("꩜ FetchQuote - Quote fetched successfully")
 	return &data.Quote, nil
 }
