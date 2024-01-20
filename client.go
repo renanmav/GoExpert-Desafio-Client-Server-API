@@ -8,8 +8,12 @@ import (
 	"time"
 )
 
+const (
+	QuoteClientTimeout = 1000 * time.Millisecond
+)
+
 func main() {
-	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), QuoteClientTimeout)
 	defer cancel()
 
 	req, err := http.NewRequestWithContext(ctx, "GET", "http://localhost:8080/cotacao", nil)
@@ -23,4 +27,8 @@ func main() {
 	}
 
 	io.Copy(os.Stdout, res.Body)
+
+	// TODO: print bid
+
+	// TODO: save bid on file cotacao.txt
 }

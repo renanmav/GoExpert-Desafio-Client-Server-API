@@ -49,6 +49,8 @@ func QuoteHandler(w http.ResponseWriter, r *http.Request) {
 		panic(err)
 	}
 
+	// TODO: persist on database with timeout of 10ms
+
 	result, err := json.Marshal(quote)
 	if err != nil {
 		panic(err)
@@ -89,6 +91,7 @@ func FetchQuote(ctx context.Context) (*Quote, error) {
 		return nil, err
 	}
 
+	// TODO: log time elapsed between start and end of request
 	fmt.Println("꩜ FetchQuote - Quote fetched successfully")
 	return &data.Quote, nil
 }
